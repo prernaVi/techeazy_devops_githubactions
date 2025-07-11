@@ -34,6 +34,16 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
+	
+      - name: Deploy and run Spring Boot app on EC2
+  	uses: appleboy/ssh-action@v1.0.0
+ 	with:host: 3.111.55.126
+        username: ec2-user
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+        cd /home/ec2-user/app
+        ./mvnw clean package
+        java -jar target/*.jar --server.port=80
 
       - name: Retrieve EC2 IP
         id: ec2_ip
