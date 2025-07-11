@@ -1,7 +1,7 @@
 {
   "version": 4,
   "terraform_version": "1.12.2",
-  "serial": 7,
+  "serial": 5,
   "lineage": "88857962-1f88-fdbc-f88b-5e0a1a37f9ce",
   "outputs": {
     "bucket_name": {
