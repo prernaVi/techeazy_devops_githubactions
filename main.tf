@@ -55,9 +55,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
   bucket = aws_s3_bucket.log_bucket.id
 
   rule {
-    id = "log-expiration"
+    id     = "log-expiration"
     status = "Enabled"
-    expiration { days = 7 }
+
+    expiration {
+      days = 7
+    }
+
+    filter {} # Add this line to satisfy the provider requirement
   }
 }
 
