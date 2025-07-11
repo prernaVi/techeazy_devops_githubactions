@@ -1,0 +1,52 @@
+name: Deploy TechEazy DevOps Project
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - deploy-dev
+      - deploy-prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ap-south-1
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Retrieve EC2 IP
+        id: ec2_ip
+        run: |
+          IP=$(terraform output -raw instance_public_ip)
+          echo "EC2_IP=$IP" >> $GITHUB_ENV
+
+      - name: SSH and Deploy App
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ec2-user
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            chmod +x /home/ec2-user/app/scripts/start.sh
+            /home/ec2-user/app/scripts/start.sh --port 80
+
+      - name: Health Check
+        run: bash scripts/healthcheck.sh ${{ env.EC2_IP }} 80
+
