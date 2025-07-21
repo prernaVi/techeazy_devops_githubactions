@@ -1,7 +1,3 @@
-output "instance_public_ip" {
-  description = "Public IP of the TechEazy EC2 instance"
-  value       = aws_instance.techeazy_instance.public_ip
-}
 
 output "bucket_name" {
   description = "S3 bucket name used for logs"
