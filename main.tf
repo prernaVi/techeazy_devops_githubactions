@@ -41,7 +41,7 @@ resource "aws_security_group" "instance_sg" {
 }
 
 resource "aws_instance" "techeazy_instance" {
-  ami                    = "ami-0447a12f28fddb066" # Amazon Linux 2023
+  ami                    = "ami-0447a12f28fddb066"
   instance_type          = "t2.micro"
   key_name               = "prerna-key-new"
   subnet_id              = data.aws_subnets.default.ids[0]
