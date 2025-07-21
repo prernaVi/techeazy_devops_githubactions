@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-          - name: Configure AWS Credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -32,61 +32,21 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-                
-                - name: Terraform Init
-                  run: terraform init
-                
-                - name: Terraform Plan
-                  run: terraform plan
-                
-                - name: Terraform Apply
-                  run: terraform apply -auto-approve
+      - name: Terraform Init
+        run: terraform init
 
-      - name: Get EC2 Public IP
-        id: get_ip
-        run: |
-          IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=techeazy-devops-instance-${{ env.STAGE }}" \
-                      "Name=instance-state-name,Values=running" \
-            --query "Reservations[*].Instances[*].PublicIpAddress" \
-            --output text)
-          echo "EC2_IP=$IP" >> $GITHUB_ENV
-          echo "Public IP: $IP"
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
 
-      - name: Wait for EC2 to be ready
-        run: |
-          echo "Waiting for EC2 to initialize..."
-          sleep 60
-
-      - name: Deploy App on EC2
+      - name: Deploy Spring Boot App
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ env.EC2_IP }}
+          host: ${{ secrets.EC2_PUBLIC_IP }}
           username: ec2-user
-          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd app
-            git pull
-            chmod +x mvnw
-            ./mvnw clean package
-            sudo pkill -f 'java' || true
-            sudo nohup java -jar target/*.jar --server.port=80 > app.log 2>&1 &
-
-      - name: Health Check
-        run: |
-          for i in {1..10}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_IP }}/)
-            if [ "$STATUS" -eq 200 ]; then
-              echo "Health check passed. App is reachable."
-              exit 0
-            else
-              echo "Attempt $i: App not reachable yet, retrying in 10s..."
-              sleep 10
-            fi
-          done
-          echo "Health check failed. App not reachable after retries."
-          exit 1
-
-      - name: Upload Logs to Stage-Specific S3 Folder
-        run: |
-          aws s3 cp app/app.log s3://your-bucket/logs/${{ env.STAGE }}/app.log
+            cd /home/ec2-user/app
+            git pull origin main
+            mvn clean package
+            sudo pkill -f 'java -jar' || true
+            nohup java -jar target/techeazy-devops-0.0.1-SNAPSHOT.jar --server.port=80 &
