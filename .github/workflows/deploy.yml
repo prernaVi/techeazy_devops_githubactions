@@ -1,12 +1,18 @@
-name: Deploy TechEazy DevOps Project
+name: Deploy Spring Boot App on EC2 (Multi-Stage)
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - deploy-dev
-      - deploy-prod
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Deployment Stage (dev, prod)"
+        required: true
+        default: "dev"
+
+env:
+  AWS_REGION: ap-south-1
+  INSTANCE_TYPE: t2.micro
+  KEY_NAME: prerna-key-new
+  STAGE: ${{ github.event.inputs.stage }}
 
 jobs:
   deploy:
@@ -16,50 +22,64 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Validate
-        run: terraform validate
-
       - name: Terraform Apply
-        run: terraform apply -auto-approve
-	
-      - name: Deploy and run Spring Boot app on EC2
-  	uses: appleboy/ssh-action@v1.0.0
- 	with:host: 3.111.55.126
-        username: ec2-user
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-        cd /home/ec2-user/app
-        ./mvnw clean package
-        java -jar target/*.jar --server.port=80
+        run: terraform apply -auto-approve -var="stage=${{ env.STAGE }}"
 
-      - name: Retrieve EC2 IP
-        id: ec2_ip
+      - name: Get EC2 Public IP
+        id: get_ip
         run: |
-          IP=$(terraform output -raw instance_public_ip)
+          IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=techeazy-devops-instance-${{ env.STAGE }}" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].PublicIpAddress" \
+            --output text)
           echo "EC2_IP=$IP" >> $GITHUB_ENV
+          echo "Public IP: $IP"
 
-      - name: SSH and Deploy App
+      - name: Wait for EC2 to be ready
+        run: |
+          echo "Waiting for EC2 to initialize..."
+          sleep 60
+
+      - name: Deploy App on EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 3.111.55.126
+          host: ${{ env.EC2_IP }}
           username: ec2-user
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            chmod +x /home/ec2-user/app/scripts/start.sh
-            /home/ec2-user/app/scripts/start.sh --port 80
+            cd app
+            git pull
+            chmod +x mvnw
+            ./mvnw clean package
+            sudo pkill -f 'java' || true
+            sudo nohup java -jar target/*.jar --server.port=80 > app.log 2>&1 &
 
       - name: Health Check
-        run: bash scripts/healthcheck.sh ${{ env.EC2_IP }} 80
+        run: |
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_IP }}/)
+            if [ "$STATUS" -eq 200 ]; then
+              echo "Health check passed. App is reachable."
+              exit 0
+            else
+              echo "Attempt $i: App not reachable yet, retrying in 10s..."
+              sleep 10
+            fi
+          done
+          echo "Health check failed. App not reachable after retries."
+          exit 1
+
+      - name: Upload Logs to Stage-Specific S3 Folder
+        run: |
+          aws s3 cp app/app.log s3://your-bucket/logs/${{ env.STAGE }}/app.log
