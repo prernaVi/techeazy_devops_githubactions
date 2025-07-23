@@ -1,11 +1,13 @@
 provider "aws" {
-  region = "ap-south-1"
+  region = var.aws_region
 }
 
+# Use default VPC
 data "aws_vpc" "default" {
   default = true
 }
 
+# Use default subnets within the default VPC
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -13,20 +15,13 @@ data "aws_subnets" "default" {
   }
 }
 
-tags = {
-    Name = "my-terraform-ec2"
-  }
-}
-resource "random_id" "sg_suffix" {
-  byte_length = 4
-}
-
 resource "aws_security_group" "instance_sg" {
-  name        = "ec2-sg-${random_id.sg_suffix.hex}"
+  name        = "techeazy-sg"
   description = "Allow SSH and HTTP"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
+    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -34,6 +29,7 @@ resource "aws_security_group" "instance_sg" {
   }
 
   ingress {
+    description = "HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -46,31 +42,64 @@ resource "aws_security_group" "instance_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "techeazy-sg" }
+}
+
+resource "aws_s3_bucket" "log_bucket" {
+  bucket        = var.bucket_name
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
+  bucket = aws_s3_bucket.log_bucket.id
+
+  rule {
+    id     = "log-expiration"
+    status = "Enabled"
+
+    expiration {
+      days = 7
+    }
+
+    filter {} # required by AWS provider
+  }
+}
+
+resource "aws_iam_role" "ec2_role" {
+  name = "techeazy-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_s3_access" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "techeazy-ec2-profile"
+  role = aws_iam_role.ec2_role.name
 }
 
 resource "aws_instance" "techeazy_instance" {
-  ami                    = "ami-0447a12f28fddb066"
-  instance_type          = "t2.micro"
-  key_name               = "prerna-key-new"
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
+  key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
-  tags = {
-    Name = "techeazy-devops-instance"
-  }
+  user_data = file("${path.module}/scripts/setup.sh")
 
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              amazon-linux-extras install java-openjdk11 -y
-              yum install git -y
-              cd /home/ec2-user
-              git clone https://github.com/prernaVi/techeazy_devops_githubactions.git app
-              cd app
-              chmod +x mvnw
-              ./mvnw package
-              java -jar target/*.jar --server.port=80
-              EOF
+  tags = { Name = "techeazy-ec2" }
 }
 
 output "instance_public_ip" {
