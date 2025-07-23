@@ -14,8 +14,11 @@ variable "instance_type" {
 
 variable "bucket_name" {
   description = "S3 bucket name for logs"
+  default     = "techeazy-prerna-logs"
 }
 
 variable "key_name" {
   description = "SSH key pair name"
+  default     = "prerna-key"
 }
+
