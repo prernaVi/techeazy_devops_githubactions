@@ -2,24 +2,42 @@ provider "aws" {
   region = "ap-south-1"
 }
 
+variable "logs_bucket_name" {
+  description = "Name for the S3 logs bucket"
+  default     = "techeazy-prerna-logs"
+}
+
+variable "ami_id" {
+  description = "AMI ID for EC2 instance"
+  default     = "ami-0a123456789abcdef"  # Replace with your valid AMI ID
+}
+
 data "aws_vpc" "default" {
   default = true
 }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+data "aws_subnet_ids" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
+data "aws_subnet" "default" {
+  id = data.aws_subnet_ids.default.ids[0]
+}
+
+resource "aws_s3_bucket" "logs_bucket" {
+  bucket = var.logs_bucket_name
+
+  tags = {
+    Name = "Logs Bucket"
   }
 }
 
-resource "aws_security_group" "instance_sg" {
-  name        = "ec2-sg-${random_id.sg_suffix.hex}"
+resource "aws_security_group" "ec2_sg_custom" {
+  name        = "techeazy-ec2-sg"
   description = "Allow SSH and HTTP"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -27,7 +45,6 @@ resource "aws_security_group" "instance_sg" {
   }
 
   ingress {
-    description = "HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -40,41 +57,25 @@ resource "aws_security_group" "instance_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "techeazy-ec2-sg"
+  }
 }
 
-resource "aws_instance" "techeazy_instance" {
-  ami                    = "ami-0447a12f28fddb066"
+resource "aws_instance" "my_ec2_instance" {
+  ami                    = var.ami_id
   instance_type          = "t2.micro"
-  key_name               = "prerna-key-new"
-  subnet_id              = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids = [aws_security_group.instance_sg.id]
+  subnet_id              = data.aws_subnet.default.id
+  vpc_security_group_ids = [aws_security_group.ec2_sg_custom.id]
 
-  
   tags = {
-      Name = "my-terraform-ec2"
-    }
+    Name = "techeazy-ec2-instance"
   }
-  resource "random_id" "sg_suffix" {
-      byte_length = 4
-  }
-
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              amazon-linux-extras install java-openjdk11 -y
-              yum install git -y
-              cd /home/ec2-user
-              git clone https://github.com/prernaVi/techeazy_devops_githubactions.git app
-              cd app
-              chmod +x mvnw
-              ./mvnw package
-              java -jar target/*.jar --server.port=80
-              EOF
 }
 
 output "instance_public_ip" {
-  value = aws_instance.techeazy_instance.public_ip
+  value = aws_instance.my_ec2_instance.public_ip
 }
-
 
 
