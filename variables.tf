@@ -19,3 +19,8 @@ variable "bucket_name" {
 variable "key_name" {
   description = "SSH key pair name"
 }
+
+variable "stage" {
+  description = "Deployment stage"
+  type        = string
+}
