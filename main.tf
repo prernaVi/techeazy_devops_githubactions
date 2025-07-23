@@ -64,13 +64,14 @@ resource "aws_security_group" "ec2_sg_custom" {
 }
 
 resource "aws_instance" "my_ec2_instance" {
-  ami                    = var.ami_id
-  instance_type          = "t2.micro"
-  subnet_id              = data.aws_subnet.default.id
-  vpc_security_group_ids = [aws_security_group.ec2_sg_custom.id]
+  ami                         = var.ami_id
+  instance_type               = "t2.micro"
+  subnet_id                   = data.aws_subnet.default.id
+  vpc_security_group_ids      = [aws_security_group.ec2_sg_custom.id]
+  key_name                    = var.key_name
 
   tags = {
-    Name = "techeazy-ec2-instance"
+    Name = "Techeazy-DevOps-Instance"
   }
 }
 
