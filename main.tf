@@ -12,13 +12,6 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }
-tags = {
-    Name = "my-terraform-ec2"
-  }
-}
-resource "random_id" "sg_suffix" {
-  byte_length = 4
-}
 
 resource "aws_security_group" "instance_sg" {
   name        = "ec2-sg-${random_id.sg_suffix.hex}"
@@ -56,8 +49,13 @@ resource "aws_instance" "techeazy_instance" {
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
 
+  
   tags = {
-    Name = "techeazy-devops-instance"
+      Name = "my-terraform-ec2"
+    }
+  }
+  resource "random_id" "sg_suffix" {
+      byte_length = 4
   }
 
   user_data = <<-EOF
