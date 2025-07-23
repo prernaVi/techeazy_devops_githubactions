@@ -2,23 +2,23 @@ provider "aws" {
   region = var.aws_region
 }
 
-resource "aws_vpc" "techeazy_vpc" {
-  cidr_block = "10.0.0.0/16"
-  tags = { Name = "techeazy-vpc" }
+# Use default VPC
+data "aws_vpc" "default" {
+  default = true
 }
 
-resource "aws_subnet" "techeazy_subnet" {
-  vpc_id                  = aws_vpc.techeazy_vpc.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = "ap-south-1a"
-  tags = { Name = "techeazy-subnet" }
+# Use default subnets within the default VPC
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
 }
 
 resource "aws_security_group" "instance_sg" {
   name        = "techeazy-sg"
   description = "Allow SSH and HTTP"
-  vpc_id      = aws_vpc.techeazy_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     description = "SSH"
@@ -47,7 +47,7 @@ resource "aws_security_group" "instance_sg" {
 }
 
 resource "aws_s3_bucket" "log_bucket" {
-  bucket = var.bucket_name
+  bucket        = var.bucket_name
   force_destroy = true
 }
 
@@ -62,7 +62,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
       days = 7
     }
 
-    filter {} # Add this line to satisfy the provider requirement
+    filter {} # required by AWS provider
   }
 }
 
@@ -72,9 +72,9 @@ resource "aws_iam_role" "ec2_role" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Effect = "Allow",
+      Effect    = "Allow",
       Principal = { Service = "ec2.amazonaws.com" },
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -92,7 +92,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 resource "aws_instance" "techeazy_instance" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  subnet_id              = aws_subnet.techeazy_subnet.id
+  subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
   key_name               = var.key_name
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
@@ -102,4 +102,6 @@ resource "aws_instance" "techeazy_instance" {
   tags = { Name = "techeazy-ec2" }
 }
 
-
+output "instance_public_ip" {
+  value = aws_instance.techeazy_instance.public_ip
+}
