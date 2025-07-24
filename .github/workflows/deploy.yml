@@ -41,16 +41,26 @@ jobs:
           IP=$(terraform output -raw instance_public_ip)
           echo "EC2_IP=$IP" >> $GITHUB_ENV
 
-      - name: Copy Spring Boot project to EC2
+      - name: Clean /home/ec2-user/app before upload
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ec2-user
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -rf /home/ec2-user/app/*
+            mkdir -p /home/ec2-user/app
+
+      - name: Copy Spring Boot app files to EC2
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ env.EC2_IP }}
           username: ec2-user
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
+          source: "pom.xml,src,mvnw,mvnw.cmd,.mvn"
           target: "/home/ec2-user/app"
 
-      - name: Deploy and run Spring Boot app on EC2
+      - name: Build and Run Spring Boot App on EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ env.EC2_IP }}
@@ -58,12 +68,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/ec2-user/app
-            chmod +x mvnw || true
+            chmod +x mvnw
             ./mvnw clean package
             sudo pkill -f 'java -jar' || true
             nohup java -jar target/*.jar --server.port=80 &
 
       - name: Health Check
         run: |
-          sleep 30
-          curl -f http://${{ env.EC2_IP }}:80/actuator/health || exit 1
+          sleep 10
+          curl --fail http://${{ env.EC2_IP }}:80 || exit 1
