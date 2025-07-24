@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+    tags:
+      - deploy-dev
+      - deploy-prod
 
 jobs:
   deploy:
@@ -39,6 +41,15 @@ jobs:
           IP=$(terraform output -raw instance_public_ip)
           echo "EC2_IP=$IP" >> $GITHUB_ENV
 
+      - name: Copy Spring Boot project to EC2
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ec2-user
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "/home/ec2-user/app"
+
       - name: Deploy and run Spring Boot app on EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -47,9 +58,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/ec2-user/app
+            chmod +x mvnw || true
             ./mvnw clean package
             sudo pkill -f 'java -jar' || true
             nohup java -jar target/*.jar --server.port=80 &
 
       - name: Health Check
-        run: bash scripts/healthcheck.sh ${{ env.EC2_IP }} 80
+        run: |
+          sleep 30
+          curl -f http://${{ env.EC2_IP }}:80/actuator/health || exit 1
