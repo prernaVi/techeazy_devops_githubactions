@@ -15,7 +15,7 @@ fi
 echo "✅ Installing Maven 3.9.6 if not present..."
 if ! mvn -v | grep "3.9.6"; then
     echo "Downloading Maven 3.9.6..."
-    wget https://dlcdn.apache.org/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz -P /tmp
+    wget https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz -P /tmp
     sudo tar xf /tmp/apache-maven-3.9.6-bin.tar.gz -C /opt
     sudo ln -sfn /opt/apache-maven-3.9.6 /opt/maven
     sudo tee /etc/profile.d/maven.sh <<EOF
