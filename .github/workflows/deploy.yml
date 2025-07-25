@@ -64,5 +64,5 @@ jobs:
             echo "Stopping any running Spring Boot application..."
             sudo pkill -f 'java -jar' || true
             echo "Starting Spring Boot application..."
-            nohup java -jar target/*.jar --server.port=80 > app.log 2>&1 &
+            nohup java -jar target/*.jar --server.port=8080 > app.log 2>&1 &
             echo "Deployment completed successfully."
