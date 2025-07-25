@@ -1,21 +1,22 @@
 #!/bin/bash
+
+# Update package lists
 sudo yum update -y
-sudo yum install git -y
 
-# Clone your repo into /home/ec2-user/app
-cd /home/ec2-user
-git clone https://github.com/prernaVi/techeazy_devops_githubactions.git app
+# Install Java (Amazon Corretto 17)
+sudo amazon-linux-extras install java-openjdk17 -y
 
-cd app
-
-# Ensure Maven is installed if not already
+# Install Maven
 sudo yum install maven -y
 
-# Build the Spring Boot app
+# Navigate to app directory
+cd /home/ec2-user/app
+
+# Build the Spring Boot project
 mvn clean package
 
-# Stop existing Java processes
+# Kill any existing Spring Boot process
 sudo pkill -f 'java -jar' || true
 
-# Run the app
+# Run the Spring Boot jar on port 80
 nohup java -jar target/*.jar --server.port=80 &
