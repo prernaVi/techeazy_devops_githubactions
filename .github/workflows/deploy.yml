@@ -11,7 +11,7 @@ jobs:
 
     env:
       AWS_REGION: ap-south-1
-      EC2_IP: 13.233.125.122  # replace with your current EC2 public IP if changed
+      EC2_IP: 13.233.125.122
 
     steps:
       - name: Checkout repository
@@ -57,12 +57,9 @@ jobs:
             echo "Navigating to app folder..."
             cd /home/ec2-user/app
             echo "Building Spring Boot app with Maven..."
-            if [ ! -f mvnw ]; then
-              chmod +x mvnw || true
-            fi
-            ./mvnw clean package -DskipTests
+            mvn clean package -DskipTests
             echo "Stopping any running Spring Boot application..."
             sudo pkill -f 'java -jar' || true
-            echo "Starting Spring Boot application..."
+            echo "Starting Spring Boot application on port 8080..."
             nohup java -jar target/*.jar --server.port=8080 > app.log 2>&1 &
             echo "Deployment completed successfully."
