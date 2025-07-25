@@ -4,27 +4,21 @@ on:
   push:
     branches:
       - main
-    tags:
-      - deploy-dev
-      - deploy-prod
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      AWS_REGION: ap-south-1
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ap-south-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -32,45 +26,35 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Validate
-        run: terraform validate
-
       - name: Terraform Apply
         run: terraform apply -auto-approve
 
-      - name: Retrieve EC2 IP
-        id: ec2_ip
+      - name: Retrieve EC2 Public IP
+        id: get_ip
         run: |
           echo "EC2_IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_ENV
 
-      - name: Wait for EC2 to be ready for SSH
+      - name: Wait for EC2 SSH to be ready
         run: |
-          echo "Waiting for SSH to be ready..."
+          echo "Waiting for EC2 SSH to become ready..."
           for i in {1..30}; do
-            if nc -zv ${{ env.EC2_IP }} 22; then
-              echo "SSH is available."
-              exit 0
-            fi
-            echo "Retry $i: SSH not available yet, waiting 10 seconds..."
+            nc -zv ${{ env.EC2_IP }} 22 && echo "SSH is up" && exit 0
+            echo "Retrying in 10s..."
             sleep 10
           done
-          echo "SSH did not become available in time." >&2
-          exit 1
+          echo "Timeout waiting for SSH" && exit 1
 
-      - name: Copy Spring Boot app to EC2
+      - name: Copy Spring Boot Project to EC2
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ env.EC2_IP }}
           username: ec2-user
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: |
-            mvnw
-            mvnw.cmd
-            pom.xml
-            src/**
-          target: /home/ec2-user/app
+          source: "."
+          target: "/home/ec2-user/app"
+          overwrite: true
 
-      - name: Build and run Spring Boot on EC2
+      - name: Deploy and Run Spring Boot App on EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ env.EC2_IP }}
@@ -82,3 +66,17 @@ jobs:
             ./mvnw clean package
             sudo pkill -f 'java -jar' || true
             nohup java -jar target/*.jar --server.port=80 &
+
+      - name: Health Check
+        run: |
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_IP }}:80/actuator/health || true)
+            echo "Health check status: $STATUS"
+            if [ "$STATUS" == "200" ]; then
+              echo "App is healthy."
+              exit 0
+            fi
+            echo "Retrying health check in 10s..."
+            sleep 10
+          done
+          echo "App failed health check" && exit 1
