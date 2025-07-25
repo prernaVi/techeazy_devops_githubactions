@@ -1,66 +1,59 @@
-name: Deploy TechEazy DevOps Project
+name: Deploy Spring Boot to EC2
 
 on:
   push:
     branches:
       - main
-    tags:
-      - deploy-dev
-      - deploy-prod
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: ap-south-1
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+    - name: Terraform Init
+      run: terraform init
 
-      - name: Terraform Init
-        run: terraform init
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
 
-      - name: Terraform Validate
-        run: terraform validate
+    - name: Get EC2 Public IP
+      id: get_ec2_ip
+      run: |
+        EC2_IP=$(terraform output -raw instance_public_ip)
+        echo "EC2_IP=$EC2_IP" >> $GITHUB_ENV
+        echo "✅ EC2 Public IP: $EC2_IP"
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+    - name: Copy Spring Boot App to EC2
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ env.EC2_IP }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        source: "."
+        target: "/home/ec2-user/app"
+        overwrite: true
+        debug: true
 
-      - name: Retrieve EC2 IP
-        id: ec2_ip
-        run: |
-          IP=$(terraform output -raw instance_public_ip)
-          echo "EC2_IP=$IP" >> $GITHUB_ENV
+    - name: Run setup.sh on EC2 to build and deploy
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ env.EC2_IP }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          chmod +x /home/ec2-user/app/scripts/setup.sh
+          sudo /home/ec2-user/app/scripts/setup.sh
 
-      - name: Copy Spring Boot App to EC2
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ env.EC2_IP }}
-          username: ec2-user
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
-          target: "/home/ec2-user/app"
-
-      - name: Deploy and run Spring Boot app on EC2
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.EC2_IP }}
-          username: ec2-user
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            chmod +x /home/ec2-user/app/scripts/setup.sh
-            /home/ec2-user/app/scripts/setup.sh
-
-      - name: Health Check
-        run: |
-          sleep 15
-          curl -f http://${{ env.EC2_IP }} || exit 1
+    - name: Verify Deployment
+      run: |
+        sleep 15
+        curl -v http://${{ env.EC2_IP }}
