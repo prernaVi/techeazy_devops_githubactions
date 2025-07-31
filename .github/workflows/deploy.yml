@@ -11,7 +11,7 @@ jobs:
 
     env:
       AWS_REGION: ap-south-1
-      EC2_IP: 13.233.125.122
+      EC2_IP: 13.200.59.211   # ✅ updated Elastic IP
 
     steps:
       - name: Checkout repository
